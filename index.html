@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gender and Age Detection</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 900px;
+        }
+        .webcam-container, .upload-container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #343a40;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        #video-container {
+            margin-top: 20px;
+            display: none;
+        }
+        #video {
+            width: 100%;
+            max-width: 640px;
+            border: 2px solid #007bff;
+            border-radius: 5px;
+        }
+        #imagePreview {
+            max-width: 100%;
+            margin-top: 15px;
+            display: none;
+            border: 2px solid #28a745;
+            border-radius: 5px;
+        }
+        #resultImage {
+            max-width: 100%;
+            margin-top: 15px;
+            display: none;
+            border: 2px solid #ffc107;
+            border-radius: 5px;
+        }
+        #results {
+            margin-top: 20px;
+            background-color: #f1f8ff;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Gender and Age Detection System</h1>
+        
+        <div class="webcam-container">
+            <h2>Webcam Detection</h2>
+            <div class="d-flex justify-content-center mb-3">
+                <button id="startCamera" class="btn btn-primary me-2">Start Webcam</button>
+                <button id="stopCamera" class="btn btn-danger" disabled>Stop Webcam</button>
+            </div>
+            <div id="video-container" class="text-center">
+                <img id="video" src="{{ url_for('video_feed') }}" alt="Webcam Feed">
+            </div>
+        </div>
+        
+        <div class="upload-container">
+            <h2>Image Upload Detection</h2>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="imageUpload" class="form-label">Select an image:</label>
+                    <input type="file" class="form-control" id="imageUpload" name="file" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-success">Detect</button>
+            </form>
+            
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <h4>Original Image</h4>
+                    <img id="imagePreview" class="img-fluid" src="" alt="Original Image">
+                </div>
+                <div class="col-md-6">
+                    <h4>Processed Result</h4>
+                    <img id="resultImage" class="img-fluid" src="" alt="Result Image">
+                </div>
+            </div>
+            
+            <div id="results">
+                <h4>Detection Results:</h4>
+                <div id="resultsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Webcam control
+            const startCamera = document.getElementById('startCamera');
+            const stopCamera = document.getElementById('stopCamera');
+            const videoContainer = document.getElementById('video-container');
+            
+            startCamera.addEventListener('click', function() {
+                videoContainer.style.display = 'block';
+                startCamera.disabled = true;
+                stopCamera.disabled = false;
+            });
+            
+            stopCamera.addEventListener('click', function() {
+                fetch('/stop_camera')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            videoContainer.style.display = 'none';
+                            startCamera.disabled = false;
+                            stopCamera.disabled = true;
+                        }
+                    });
+            });
+            
+            // Image upload and preview
+            const imageUpload = document.getElementById('imageUpload');
+            const imagePreview = document.getElementById('imagePreview');
+            const resultImage = document.getElementById('resultImage');
+            const results = document.getElementById('results');
+            const resultsList = document.getElementById('resultsList');
+            
+            imageUpload.addEventListener('change', function() {
+                const file = this.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                        imagePreview.style.display = 'block';
+                        resultImage.style.display = 'none';
+                        results.style.display = 'none';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+            
+            // Form submission
+            const uploadForm = document.getElementById('uploadForm');
+            uploadForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                
+                fetch('/predict_from_image', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    
+                    // Display result image
+                    resultImage.src = data.processed_image + '?t=' + new Date().getTime();
+                    resultImage.style.display = 'block';
+                    
+                    // Display detection results
+                    resultsList.innerHTML = '';
+                    data.results.forEach((result, index) => {
+                        const resultItem = document.createElement('div');
+                        resultItem.classList.add('alert', 'alert-info');
+                        resultItem.innerHTML = `<strong>Face ${index + 1}:</strong> Gender: ${result.gender}, Age: ${result.age}`;
+                        resultsList.appendChild(resultItem);
+                    });
+                    
+                    results.style.display = data.results.length > 0 ? 'block' : 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while processing the image');
+                });
+            });
+        });
+    </script>
+</body>
+</html>
